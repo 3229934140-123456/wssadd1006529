@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePracticeStore } from '@/store/usePracticeStore';
 import { getPatientsBySceneId, getReceiptsBySceneId } from '@/utils/validation';
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui';
 import PatientReconcileCard from '@/components/patient/PatientReconcileCard';
 import DraggableReceipt from '@/components/receipt/DraggableReceipt';
 import IssueDock from '@/components/issue/IssueDock';
+import ExamTimer from '@/components/exam/ExamTimer';
+import SelfCheckPanel from '@/components/reconcile/SelfCheckPanel';
+import { Difficulty } from '@/types';
+import { cn } from '@/lib/utils';
 import {
   Users,
   CheckCircle2,
@@ -16,11 +20,25 @@ import {
   Receipt as ReceiptIcon,
 } from 'lucide-react';
 
+const getExamDuration = (difficulty: Difficulty): number => {
+  const durations: Record<Difficulty, number> = {
+    1: 600,
+    2: 900,
+    3: 1200,
+    4: 1500,
+    5: 1800,
+  };
+  return durations[difficulty] || 900;
+};
+
 export default function Reconcile() {
   const { sceneId } = useParams<{ sceneId: string }>();
   const navigate = useNavigate();
   const matchedReceipts = usePracticeStore((state) => state.matchedReceipts);
   const submitReconciliation = usePracticeStore((state) => state.submitReconciliation);
+  const isExamMode = usePracticeStore((state) => state.isExamMode);
+  const startTime = usePracticeStore((state) => state.startTime);
+  const startTimer = usePracticeStore((state) => state.startTimer);
 
   const scene = useMemo(() => scenes.find((s) => s.id === sceneId), [sceneId]);
   const patients = useMemo(() => (sceneId ? getPatientsBySceneId(sceneId) : []), [sceneId]);
@@ -48,12 +66,27 @@ export default function Reconcile() {
 
   const matchProgress = patients.length > 0 ? (patientsWithMatches.length / patients.length) * 100 : 0;
 
+  const examDuration = useMemo(
+    () => (scene ? getExamDuration(scene.difficulty) : 900),
+    [scene]
+  );
+
   const handleSubmit = () => {
     if (sceneId) {
       submitReconciliation();
       navigate(`/scenes/${sceneId}/feedback`);
     }
   };
+
+  const handleTimeUp = () => {
+    handleSubmit();
+  };
+
+  useEffect(() => {
+    if (isExamMode && startTime === null && scene) {
+      startTimer();
+    }
+  }, [isExamMode, startTime, scene, startTimer]);
 
   if (!scene) {
     return (
@@ -68,11 +101,28 @@ export default function Reconcile() {
   return (
     <PageContainer className="pb-40">
       <div className="mb-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100">
+        <div
+          className={cn(
+            'bg-white rounded-2xl shadow-sm border overflow-hidden',
+            isExamMode ? 'border-orange-300 ring-2 ring-orange-100' : 'border-gray-100'
+          )}
+        >
+          <div
+            className={cn(
+              'px-6 py-5 border-b',
+              isExamMode ? 'border-orange-200 bg-orange-50/30' : 'border-gray-100'
+            )}
+          >
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center text-2xl">
+                <div
+                  className={cn(
+                    'w-12 h-12 rounded-xl flex items-center justify-center text-2xl',
+                    isExamMode
+                      ? 'bg-gradient-to-br from-orange-100 to-rose-100'
+                      : 'bg-gradient-to-br from-blue-100 to-indigo-100'
+                  )}
+                >
                   {scene.icon}
                 </div>
                 <div>
@@ -80,15 +130,51 @@ export default function Reconcile() {
                   <div className="flex items-center gap-2 mt-0.5 text-gray-500 text-sm">
                     <Stethoscope className="w-3.5 h-3.5" />
                     <span>{scene.category}</span>
+                    {isExamMode && (
+                      <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-medium">
+                        考核模式
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 border border-blue-100">
-                  <Users className="w-5 h-5 text-blue-500" />
+                {isExamMode && (
+                  <ExamTimer
+                    totalSeconds={examDuration}
+                    isRunning={startTime !== null}
+                    onTimeUp={handleTimeUp}
+                  />
+                )}
+                <div
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-xl border',
+                    isExamMode
+                      ? 'bg-orange-50 border-orange-200'
+                      : 'bg-blue-50 border-blue-100'
+                  )}
+                >
+                  <Users
+                    className={cn(
+                      'w-5 h-5',
+                      isExamMode ? 'text-orange-500' : 'text-blue-500'
+                    )}
+                  />
                   <div>
-                    <div className="text-xs text-blue-600">对账进度</div>
-                    <div className="font-bold text-blue-700">
+                    <div
+                      className={cn(
+                        'text-xs',
+                        isExamMode ? 'text-orange-600' : 'text-blue-600'
+                      )}
+                    >
+                      对账进度
+                    </div>
+                    <div
+                      className={cn(
+                        'font-bold',
+                        isExamMode ? 'text-orange-700' : 'text-blue-700'
+                      )}
+                    >
                       {patientsWithMatches.length} / {patients.length} 位患者
                     </div>
                   </div>
@@ -97,11 +183,21 @@ export default function Reconcile() {
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-gray-50/50">
+          <div
+            className={cn(
+              'px-6 py-4',
+              isExamMode ? 'bg-orange-50/50' : 'bg-gray-50/50'
+            )}
+          >
             <div className="flex items-center gap-3">
               <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                  className={cn(
+                    'h-full rounded-full transition-all duration-500 ease-out',
+                    isExamMode
+                      ? 'bg-gradient-to-r from-orange-500 to-rose-500'
+                      : 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                  )}
                   style={{ width: `${matchProgress}%` }}
                 />
               </div>
@@ -141,7 +237,7 @@ export default function Reconcile() {
               <div className="flex gap-4 pb-2">
                 {unmatchedReceipts.map((receipt) => (
                   <div key={receipt.id} className="shrink-0 w-56">
-                    <DraggableReceipt receipt={receipt} />
+                    <DraggableReceipt receipt={receipt} hideDecoy={isExamMode} />
                   </div>
                 ))}
               </div>
@@ -167,11 +263,25 @@ export default function Reconcile() {
 
       <IssueDock />
 
-      <div className="fixed bottom-24 right-6 z-40">
-        <Button size="lg" onClick={handleSubmit} className="shadow-xl shadow-blue-500/30">
+      <div className="fixed bottom-24 right-6 z-40 flex items-end gap-3">
+        <Button
+          size="lg"
+          onClick={handleSubmit}
+          className={cn(
+            'shadow-xl h-12',
+            isExamMode
+              ? 'shadow-orange-500/30 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600'
+              : 'shadow-blue-500/30'
+          )}
+        >
           <Send className="w-5 h-5" />
           提交对账
         </Button>
+        <SelfCheckPanel
+          patients={patients}
+          unmatchedReceiptCount={unmatchedReceipts.length}
+          noFixed
+        />
       </div>
     </PageContainer>
   );

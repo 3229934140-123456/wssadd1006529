@@ -3,6 +3,7 @@ import SceneSelect from "@/pages/SceneSelect";
 import BillView from "@/pages/BillView";
 import Reconcile from "@/pages/Reconcile";
 import Feedback from "@/pages/Feedback";
+import Records from "@/pages/Records";
 import { Header } from "@/components/layout";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/scenes/:sceneId/bill" element={<BillView />} />
             <Route path="/scenes/:sceneId/reconcile" element={<Reconcile />} />
             <Route path="/scenes/:sceneId/feedback" element={<Feedback />} />
+            <Route path="/records" element={<Records />} />
           </Routes>
         </main>
       </div>

@@ -1,16 +1,30 @@
 import { useState, useMemo } from 'react';
-import { Sparkles, GraduationCap } from 'lucide-react';
+import { Sparkles, GraduationCap, Target, Award, BookOpen } from 'lucide-react';
 import SceneCard from '../components/scene/SceneCard';
 import SceneFilter from '../components/scene/SceneFilter';
 import SceneDetailModal from '../components/scene/SceneDetailModal';
 import { scenes } from '../data/scenes';
 import { Scene, Difficulty } from '../types';
+import { useRecordsStore, getScoreLevel } from '../store/useRecordsStore';
 
 export default function SceneSelect() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('全部');
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const getAverageScore = useRecordsStore((state) => state.getAverageScore);
+  const getTotalPracticeCount = useRecordsStore((state) => state.getTotalPracticeCount);
+  const records = useRecordsStore((state) => state.records);
+
+  const averageScore = getAverageScore();
+  const totalPracticeCount = getTotalPracticeCount();
+  const practicedSceneCount = useMemo(() => {
+    const uniqueSceneIds = new Set(records.map((r) => r.sceneId));
+    return uniqueSceneIds.size;
+  }, [records]);
+
+  const scoreLevel = averageScore > 0 ? getScoreLevel(averageScore) : null;
 
   const filteredScenes = useMemo(() => {
     return scenes.filter((scene) => {
@@ -90,6 +104,51 @@ export default function SceneSelect() {
                 </div>
               </div>
             </div>
+
+            {totalPracticeCount > 0 && (
+              <div className="mt-8 pt-6 border-t border-white/20">
+                <div className="text-white/80 text-sm font-medium mb-4 flex items-center gap-2">
+                  <Award className="w-4 h-4" />
+                  我的学习进度
+                </div>
+                <div className="flex flex-wrap gap-6">
+                  <div className="flex items-center gap-3 text-white/90">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                      🎯
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-white">
+                        {averageScore}分
+                        {scoreLevel && (
+                          <span className="ml-2 text-sm font-normal text-white/70">
+                            {scoreLevel.label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-white/70">平均分</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-white/90">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-white">{practicedSceneCount}</div>
+                      <div className="text-sm text-white/70">已练习场景</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-white/90">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                      <Target className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-white">{totalPracticeCount}</div>
+                      <div className="text-sm text-white/70">总练习次数</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

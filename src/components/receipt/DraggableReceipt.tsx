@@ -19,6 +19,7 @@ import {
 interface DraggableReceiptProps {
   receipt: Receipt;
   isMatched?: boolean;
+  hideDecoy?: boolean;
   onDragStart?: (e: React.DragEvent, receipt: Receipt) => void;
   onDragEnd?: (e: React.DragEvent, receipt: Receipt) => void;
 }
@@ -116,6 +117,7 @@ const ReceiptIcon = ({ type }: { type: ReceiptType }) => {
 export default function DraggableReceipt({
   receipt,
   isMatched = false,
+  hideDecoy = false,
   onDragStart,
   onDragEnd,
 }: DraggableReceiptProps) {
@@ -154,7 +156,7 @@ export default function DraggableReceipt({
         !isMatched && 'hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02]',
         'border-gray-200',
         isMatched && 'opacity-50 pointer-events-none',
-        receipt.isDecoy && 'opacity-60'
+        receipt.isDecoy && !hideDecoy && 'opacity-60'
       )}
     >
       <div
@@ -274,7 +276,7 @@ export default function DraggableReceipt({
         </div>
       )}
 
-      {receipt.isDecoy && !isMatched && (
+      {receipt.isDecoy && !isMatched && !hideDecoy && (
         <div className="absolute top-24 right-3">
           <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600">
             干扰凭证

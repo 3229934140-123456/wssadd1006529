@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePracticeStore } from '@/store/usePracticeStore';
-import { getPatientsBySceneId } from '@/utils/validation';
+import { getPatientsBySceneId, getReceiptById } from '@/utils/validation';
 import { formatCurrency } from '@/utils/format';
 import { scenes } from '@/data/scenes';
+import { patients as allPatients } from '@/data/patients';
+import { ISSUE_TYPE_LABELS, RECEIPT_TYPE_LABELS, IssueType, Scene } from '@/types';
 import { PageContainer } from '@/components/layout';
-import { Button, ProgressRing, Accordion, Modal, AccordionItem } from '@/components/ui';
+import { Button, ProgressRing, Accordion, Modal, AccordionItem, Badge, Card } from '@/components/ui';
 import IssueTag from '@/components/issue/IssueTag';
 import {
   CheckCircle2,
@@ -19,7 +21,13 @@ import {
   FileText,
   MessageCircle,
   Stethoscope,
+  Clock,
+  TrendingUp,
+  Sparkles,
+  Play,
 } from 'lucide-react';
+
+const EXAM_PASS_SCORE = 80;
 
 export default function Feedback() {
   const { sceneId } = useParams<{ sceneId: string }>();
@@ -29,6 +37,9 @@ export default function Feedback() {
   const matchedReceipts = usePracticeStore((state) => state.matchedReceipts);
   const patientIssues = usePracticeStore((state) => state.patientIssues);
   const resetPractice = usePracticeStore((state) => state.resetPractice);
+  const isExamMode = usePracticeStore((state) => state.isExamMode);
+  const startTime = usePracticeStore((state) => state.startTime);
+  const endTime = usePracticeStore((state) => state.endTime);
 
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
 
@@ -46,6 +57,71 @@ export default function Feedback() {
   }, [results]);
 
   const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+
+  const duration = useMemo(() => {
+    if (!startTime || !endTime) return { minutes: 0, seconds: 0, totalSeconds: 0 };
+    const totalSeconds = Math.floor((endTime - startTime) / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return { minutes, seconds, totalSeconds };
+  }, [startTime, endTime]);
+
+  const isPassed = score !== null && score >= EXAM_PASS_SCORE;
+
+  const wrongIssueStats = useMemo(() => {
+    if (!results || !patients.length) return [];
+    const issueCount = new Map<IssueType, number>();
+    const wrongResults = results.filter((r) => !r.totalCorrect);
+    wrongResults.forEach((result) => {
+      const patient = patients.find((p) => p.id === result.patientId);
+      if (patient) {
+        patient.issues.forEach((issue) => {
+          issueCount.set(issue, (issueCount.get(issue) || 0) + 1);
+        });
+      }
+    });
+    const sortedIssues = Array.from(issueCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => ({
+        type,
+        count,
+        label: ISSUE_TYPE_LABELS[type],
+        percentage: wrongResults.length > 0 ? Math.round((count / wrongResults.length) * 100) : 0,
+      }));
+    return sortedIssues;
+  }, [results, patients]);
+
+  const recommendedScenes = useMemo((): Scene[] => {
+    if (!scene || wrongIssueStats.length === 0) return [];
+    const topIssueType = wrongIssueStats[0].type;
+    const otherScenes = scenes.filter((s) => s.id !== sceneId);
+    const sceneIssueCount = otherScenes.map((s) => {
+      const scenePatients = allPatients.filter((p) => p.sceneId === s.id);
+      const issueCount = scenePatients.reduce((count, patient) => {
+        return count + (patient.issues.includes(topIssueType) ? 1 : 0);
+      }, 0);
+      return { scene: s, issueCount, difficultyDiff: Math.abs(s.difficulty - scene.difficulty) };
+    });
+    const sortedScenes = sceneIssueCount
+      .filter((s) => s.issueCount > 0)
+      .sort((a, b) => {
+        if (b.issueCount !== a.issueCount) return b.issueCount - a.issueCount;
+        return a.difficultyDiff - b.difficultyDiff;
+      })
+      .slice(0, 3)
+      .map((s) => s.scene);
+    if (sortedScenes.length < 2) {
+      const similarCategory = otherScenes.filter(
+        (s) => s.category === scene.category && s.id !== sceneId && !sortedScenes.includes(s)
+      );
+      const similarDifficulty = similarCategory.length > 0
+        ? similarCategory
+        : otherScenes.filter((s) => Math.abs(s.difficulty - scene.difficulty) <= 1 && !sortedScenes.includes(s));
+      const additional = similarDifficulty.slice(0, 2 - sortedScenes.length);
+      return [...sortedScenes, ...additional];
+    }
+    return sortedScenes;
+  }, [scene, wrongIssueStats, sceneId]);
 
   const allKnowledgePoints = useMemo(() => {
     const points = new Map<string, string>();
@@ -116,24 +192,40 @@ export default function Feedback() {
                   {userMatchedIds.length === 0 ? (
                     <span className="text-xs text-gray-400">未匹配任何凭证</span>
                   ) : (
-                    userMatchedIds.map((id) => (
-                      <span
-                        key={id}
-                        className={
-                          'px-2 py-0.5 rounded text-xs font-medium ' +
-                          (patient.expectedReceiptIds.includes(id)
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700')
-                        }
-                      >
-                        {id}
-                      </span>
-                    ))
+                    userMatchedIds.map((id) => {
+                      const receipt = getReceiptById(id);
+                      const label = receipt
+                        ? `${RECEIPT_TYPE_LABELS[receipt.type]} ${formatCurrency(receipt.amount)}`
+                        : id;
+                      return (
+                        <span
+                          key={id}
+                          className={
+                            'px-2 py-0.5 rounded text-xs font-medium ' +
+                            (patient.expectedReceiptIds.includes(id)
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700')
+                          }
+                        >
+                          {label}
+                        </span>
+                      );
+                    })
                   )}
                 </div>
                 <div className="text-xs text-gray-400 flex items-center gap-1.5">
                   <Target className="w-3 h-3" />
-                  正确凭证: {patient.expectedReceiptIds.join(', ')}
+                  正确凭证:{' '}
+                  {patient.expectedReceiptIds.length === 0
+                    ? '无'
+                    : patient.expectedReceiptIds
+                        .map((id) => {
+                          const receipt = getReceiptById(id);
+                          return receipt
+                            ? `${RECEIPT_TYPE_LABELS[receipt.type]} ${formatCurrency(receipt.amount)}`
+                            : id;
+                        })
+                        .join('、')}
                 </div>
               </div>
 
@@ -158,16 +250,14 @@ export default function Feedback() {
                 <div className="text-xs text-gray-400 flex items-center gap-1.5">
                   <Target className="w-3 h-3" />
                   正确问题:{' '}
-                  {patient.issues.length === 0 ? (
-                    '无'
-                  ) : (
-                    patient.issues.map((i, idx) => (
-                      <span key={i}>
-                        {idx > 0 ? '、' : ''}
-                        {i}
-                      </span>
-                    ))
-                  )}
+                  {patient.issues.length === 0
+                    ? '无'
+                    : patient.issues.map((i, idx) => (
+                        <span key={i}>
+                          {idx > 0 ? '、' : ''}
+                          {ISSUE_TYPE_LABELS[i]}
+                        </span>
+                      ))}
                 </div>
               </div>
             </div>
@@ -256,7 +346,13 @@ export default function Feedback() {
     <PageContainer className="pb-28">
       <div className="mb-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-8 bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50">
+          <div className={`px-6 py-8 ${
+            isExamMode
+              ? isPassed
+                ? 'bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50'
+                : 'bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50'
+              : 'bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50'
+          }`}>
             <div className="flex items-center justify-between flex-wrap gap-6">
               <div className="flex items-center gap-6">
                 <ProgressRing progress={score} size={140} strokeWidth={10}>
@@ -266,14 +362,35 @@ export default function Feedback() {
                   </div>
                 </ProgressRing>
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Award className="w-6 h-6 text-amber-500" />
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Award className={`w-6 h-6 ${
+                      isExamMode
+                        ? isPassed ? 'text-emerald-500' : 'text-orange-500'
+                        : 'text-amber-500'
+                    }`} />
                     <h1 className="text-2xl font-bold text-gray-900">
                       {scene.name}
                     </h1>
+                    {isExamMode && (
+                      <Badge variant="danger" className="ml-1">
+                        正式考核
+                      </Badge>
+                    )}
+                    {isExamMode && (
+                      isPassed ? (
+                        <Badge variant="success">
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          考核通过
+                        </Badge>
+                      ) : (
+                        <Badge variant="danger">
+                          未通过
+                        </Badge>
+                      )
+                    )}
                   </div>
                   <p className="text-gray-600 text-sm">{scene.description}</p>
-                  <div className="mt-3 flex items-center gap-4">
+                  <div className="mt-3 flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200">
                       <CheckCircle2 className="w-4 h-4 text-green-500" />
                       <span className="text-sm text-gray-700">
@@ -292,6 +409,12 @@ export default function Feedback() {
                         问题识别 <span className="font-semibold">{stats.issueCorrect}/{stats.total}</span>
                       </span>
                     </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200">
+                      <Clock className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm text-gray-700">
+                        用时 <span className="font-semibold">{duration.minutes}分{duration.seconds.toString().padStart(2, '0')}秒</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -304,11 +427,109 @@ export default function Feedback() {
                     <span className="text-lg text-gray-400 font-normal"> / {stats.total}</span>
                   </div>
                 </div>
+                {isExamMode && (
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">通过标准</div>
+                    <div className="text-lg font-semibold text-gray-600">
+                      {EXAM_PASS_SCORE} 分以上
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {wrongIssueStats.length > 0 && (
+        <div className="mb-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-orange-500" />
+            错题分析
+          </h2>
+          <Card className="p-5">
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">
+                本次练习共做错 <span className="font-semibold text-gray-700">{stats.total - stats.correct}</span> 位患者，以下是错误问题类型分布：
+              </p>
+              <div className="space-y-3">
+                {wrongIssueStats.map((item) => (
+                  <div key={item.type} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <IssueTag issue={item.type} />
+                        <span className="text-xs text-gray-500">{item.count} 次</span>
+                      </div>
+                      <span className="text-xs font-medium text-gray-600">{item.percentage}%</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full transition-all duration-500"
+                        style={{ width: `${item.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {recommendedScenes.length > 0 && (
+        <div className="mb-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-500" />
+            推荐练习
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            根据你的错题类型，推荐以下场景进行针对性练习
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recommendedScenes.map((recScene) => (
+              <Card
+                key={recScene.id}
+                hoverable
+                onClick={() => {
+                  resetPractice();
+                  navigate(`/scenes/${recScene.id}/bill`);
+                }}
+                className="p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${recScene.background} flex items-center justify-center text-2xl shrink-0`}>
+                    {recScene.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900 truncate">
+                        {recScene.name}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                      {recScene.description}
+                    </p>
+                    <div className="flex items-center gap-2 mt-3">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {recScene.category}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        难度{'★'.repeat(recScene.difficulty)}{'☆'.repeat(5 - recScene.difficulty)}
+                      </span>
+                    </div>
+                    <div className="mt-3">
+                      <button className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700">
+                        <Play className="w-3.5 h-3.5" />
+                        开始练习
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">

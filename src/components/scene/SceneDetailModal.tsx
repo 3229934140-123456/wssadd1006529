@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { X, Clock, Users, Star, Target, Lightbulb, Play } from 'lucide-react';
+import { X, Clock, Users, Star, Target, Lightbulb, Play, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Scene } from '../../types';
 import { usePracticeStore } from '../../store/usePracticeStore';
@@ -43,8 +43,19 @@ export default function SceneDetailModal({ scene, isOpen, onClose }: SceneDetail
     ));
   };
 
-  const handleStart = () => {
-    setCurrentScene(scene.id);
+  const getExamDuration = (difficulty: number): number => {
+    const durations: Record<number, number> = {
+      1: 10 * 60,
+      2: 15 * 60,
+      3: 20 * 60,
+      4: 25 * 60,
+      5: 30 * 60,
+    };
+    return durations[difficulty] || 15 * 60;
+  };
+
+  const handleStart = (isExamMode: boolean = false) => {
+    setCurrentScene(scene.id, isExamMode);
     navigate(`/scenes/${scene.id}/bill`);
   };
 
@@ -128,6 +139,33 @@ export default function SceneDetailModal({ scene, isOpen, onClose }: SceneDetail
                 </ul>
               </div>
             </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Trophy className="w-5 h-5 text-rose-500" />
+                <h3 className="font-semibold text-gray-800">考核模式说明</h3>
+              </div>
+              <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 ml-7">
+                <ul className="space-y-2.5">
+                  <li className="text-rose-800 text-sm flex items-start gap-2">
+                    <span className="text-base shrink-0">🎯</span>
+                    <span>考核模式下会隐藏明显提示和干扰标记</span>
+                  </li>
+                  <li className="text-rose-800 text-sm flex items-start gap-2">
+                    <span className="text-base shrink-0">⏱️</span>
+                    <span>有倒计时限制（{getExamDuration(scene.difficulty) / 60}分钟）</span>
+                  </li>
+                  <li className="text-rose-800 text-sm flex items-start gap-2">
+                    <span className="text-base shrink-0">✅</span>
+                    <span>80分以上为通过</span>
+                  </li>
+                  <li className="text-rose-800 text-sm flex items-start gap-2">
+                    <span className="text-base shrink-0">📊</span>
+                    <span>考核结果会记录在练习档案中</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -135,16 +173,23 @@ export default function SceneDetailModal({ scene, isOpen, onClose }: SceneDetail
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-6 py-3 rounded-xl font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-3 rounded-xl font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               取消
             </button>
             <button
-              onClick={handleStart}
-              className="flex-1 px-6 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
+              onClick={() => handleStart(false)}
+              className="flex-1 px-4 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
             >
               <Play className="w-5 h-5 fill-white" />
-              开始练习
+              练习模式
+            </button>
+            <button
+              onClick={() => handleStart(true)}
+              className="flex-1 px-4 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-700 hover:to-orange-600 shadow-lg shadow-rose-200 transition-all flex items-center justify-center gap-2"
+            >
+              <Trophy className="w-5 h-5" />
+              正式考核
             </button>
           </div>
         </div>

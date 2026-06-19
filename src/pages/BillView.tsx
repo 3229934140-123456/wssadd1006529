@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePracticeStore } from '@/store/usePracticeStore';
 import { getPatientsBySceneId, getReceiptsBySceneId, getTotalReceivableAmount } from '@/utils/validation';
@@ -9,13 +9,15 @@ import { Button } from '@/components/ui';
 import PatientTableRow from '@/components/patient/PatientTableRow';
 import ReceiptTabs from '@/components/receipt/ReceiptTabs';
 import ReceiptPreviewModal from '@/components/receipt/ReceiptPreviewModal';
-import { Receipt } from '@/types';
+import { Receipt, Difficulty } from '@/types';
 import {
   Calendar,
   Wallet,
   FileText,
   ArrowRight,
   Stethoscope,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function BillView() {
@@ -23,9 +25,17 @@ export default function BillView() {
   const navigate = useNavigate();
   const setCurrentScene = usePracticeStore((state) => state.setCurrentScene);
   const setStep = usePracticeStore((state) => state.setStep);
+  const isExamMode = usePracticeStore((state) => state.isExamMode);
+  const currentSceneId = usePracticeStore((state) => state.currentSceneId);
 
   const [previewReceipt, setPreviewReceipt] = useState<Receipt | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (sceneId && currentSceneId !== sceneId) {
+      setCurrentScene(sceneId, false);
+    }
+  }, [sceneId, currentSceneId, setCurrentScene]);
 
   const scene = useMemo(() => scenes.find((s) => s.id === sceneId), [sceneId]);
   const patients = useMemo(() => (sceneId ? getPatientsBySceneId(sceneId) : []), [sceneId]);
@@ -34,9 +44,28 @@ export default function BillView() {
 
   const mockDate = '2026-06-20 星期六';
 
+  const getExamDuration = (difficulty: Difficulty): number => {
+    const durationMap: Record<Difficulty, number> = {
+      1: 600,
+      2: 900,
+      3: 1200,
+      4: 1500,
+      5: 1800,
+    };
+    return durationMap[difficulty];
+  };
+
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`;
+  };
+
+  const examDuration = scene ? getExamDuration(scene.difficulty) : 0;
+
   const handleStartReconcile = () => {
     if (sceneId) {
-      setCurrentScene(sceneId);
+      setCurrentScene(sceneId, isExamMode);
       setStep('reconcile');
       navigate(`/scenes/${sceneId}/reconcile`);
     }
@@ -63,7 +92,14 @@ export default function BillView() {
                   {scene.icon}
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-white">{scene.name}</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-white">{scene.name}</h1>
+                    {isExamMode && (
+                      <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-orange-500 text-white shadow-sm">
+                        正式考核
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 mt-1 text-white/80 text-sm">
                     <Stethoscope className="w-4 h-4" />
                     <span>{scene.category}</span>
@@ -101,6 +137,26 @@ export default function BillView() {
           </div>
         </div>
       </div>
+
+      {isExamMode && (
+        <div className="mb-6 bg-orange-50 border border-orange-200 rounded-2xl px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div className="p-1.5 rounded-lg bg-orange-100 text-orange-600 shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-orange-800 text-sm">考核模式</h3>
+              <p className="text-orange-700 text-sm mt-0.5">
+                提示已隐藏，请独立完成对账。
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 text-orange-600 text-xs">
+                <Clock className="w-3.5 h-3.5" />
+                <span>预计时长：{formatDuration(examDuration)} · 进入对账页后开始计时</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-10 gap-6">
         <div className="col-span-6">
@@ -162,6 +218,7 @@ export default function BillView() {
               <ReceiptTabs
                 receipts={receipts}
                 onReceiptClick={(receipt) => setPreviewReceipt(receipt)}
+                hideDecoy={isExamMode}
               />
             </div>
           </div>
@@ -175,9 +232,23 @@ export default function BillView() {
               共 <span className="font-semibold text-gray-900">{patients.length}</span> 位患者，
               应收总额 <span className="font-semibold text-gray-900">{formatCurrency(totalReceivable)}</span>
             </div>
+            {isExamMode && (
+              <div className="flex items-center gap-1.5 text-orange-600 text-sm">
+                <Clock className="w-4 h-4" />
+                <span>预计 {formatDuration(examDuration)}</span>
+              </div>
+            )}
           </div>
-          <Button size="lg" onClick={handleStartReconcile}>
-            开始对账
+          <Button
+            size="lg"
+            onClick={handleStartReconcile}
+            className={
+              isExamMode
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-orange-500/30'
+                : ''
+            }
+          >
+            {isExamMode ? '开始考核' : '开始对账'}
             <ArrowRight className="w-5 h-5" />
           </Button>
         </div>
@@ -186,6 +257,7 @@ export default function BillView() {
       <ReceiptPreviewModal
         receipt={previewReceipt}
         onClose={() => setPreviewReceipt(null)}
+        hideDecoy={isExamMode}
       />
     </PageContainer>
   );

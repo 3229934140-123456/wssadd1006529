@@ -23,6 +23,7 @@ import {
 interface ReceiptPreviewModalProps {
   receipt: Receipt | null;
   onClose: () => void;
+  hideDecoy?: boolean;
 }
 
 interface PreviewStyleConfig {
@@ -100,6 +101,7 @@ const TypeIcon = ({ type }: { type: ReceiptType }) => {
 export default function ReceiptPreviewModal({
   receipt,
   onClose,
+  hideDecoy = false,
 }: ReceiptPreviewModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -121,6 +123,7 @@ export default function ReceiptPreviewModal({
   const isRefund = receipt.type === 'refund';
   const isDiscount = receipt.type === 'discount';
   const isZeroAmount = receipt.amount === 0;
+  const showDecoy = receipt.isDecoy && !hideDecoy;
 
   return (
     <div
@@ -282,7 +285,7 @@ export default function ReceiptPreviewModal({
           </div>
         </div>
 
-        {receipt.isDecoy && (
+        {showDecoy && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] pointer-events-none">
             <div className="px-6 py-2 border-4 border-red-400/50 rounded-lg">
               <span className="text-2xl font-bold text-red-400/50 tracking-widest">

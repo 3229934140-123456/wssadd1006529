@@ -18,6 +18,7 @@ interface ReceiptCardProps {
   receipt: Receipt;
   selected?: boolean;
   onClick?: () => void;
+  hideDecoy?: boolean;
 }
 
 interface ReceiptStyleConfig {
@@ -114,11 +115,13 @@ export default function ReceiptCard({
   receipt,
   selected,
   onClick,
+  hideDecoy = false,
 }: ReceiptCardProps) {
   const style = receiptStyles[receipt.type];
   const isRefund = receipt.type === 'refund';
   const isDiscount = receipt.type === 'discount';
   const isZeroAmount = receipt.amount === 0;
+  const showDecoy = receipt.isDecoy && !hideDecoy;
 
   return (
     <div
@@ -128,7 +131,7 @@ export default function ReceiptCard({
         selected
           ? cn('ring-2 ring-offset-2', style.border.replace('border-', 'ring-'))
           : 'border-gray-200',
-        receipt.isDecoy && 'opacity-60'
+        showDecoy && 'opacity-60'
       )}
       onClick={onClick}
     >
@@ -232,7 +235,7 @@ export default function ReceiptCard({
         </div>
       </div>
 
-      {receipt.isDecoy && (
+      {showDecoy && (
         <div className="absolute top-24 right-3">
           <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600">
             干扰凭证

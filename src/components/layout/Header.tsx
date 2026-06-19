@@ -1,4 +1,5 @@
-import { Stethoscope, ArrowLeft } from "lucide-react";
+import { Stethoscope, ArrowLeft, ClipboardList } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +10,8 @@ export interface HeaderProps {
 }
 
 export function Header({ sceneName, onBackToScenes, className }: HeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <header
       className={cn(
@@ -45,6 +48,15 @@ export function Header({ sceneName, onBackToScenes, className }: HeaderProps) {
               )}
             </>
           )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate("/records")}
+            className="gap-1.5"
+          >
+            <ClipboardList size={16} />
+            <span>练习记录</span>
+          </Button>
         </div>
       </div>
     </header>

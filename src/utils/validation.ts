@@ -26,15 +26,26 @@ const arraysEqual = <T>(a: T[], b: T[]): boolean => {
   return sortedA.every((val, idx) => val === sortedB[idx]);
 };
 
+const arrayContainsAll = <T>(superset: T[], subset: T[]): boolean => {
+  return subset.every((item) => superset.includes(item));
+};
+
 export const validatePatientReconciliation = (
   patient: Patient,
   matchedReceiptIds: string[],
   selectedIssues: IssueType[]
 ): Omit<ReconciliationResult, 'patientId'> => {
-  const isMatchCorrect = arraysEqual(
-    matchedReceiptIds.sort(),
-    patient.expectedReceiptIds.sort()
-  );
+  const hasDuplicatePayment = patient.issues.includes('duplicate_payment');
+
+  let isMatchCorrect: boolean;
+  if (hasDuplicatePayment) {
+    isMatchCorrect = arrayContainsAll(matchedReceiptIds, patient.expectedReceiptIds);
+  } else {
+    isMatchCorrect = arraysEqual(
+      [...matchedReceiptIds].sort(),
+      [...patient.expectedReceiptIds].sort()
+    );
+  }
 
   const isIssueCorrect = arraysEqual(
     [...selectedIssues].sort(),

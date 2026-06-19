@@ -79,6 +79,35 @@ export interface PracticeState {
   patientIssues: Record<string, IssueType[]>;
   results: ReconciliationResult[] | null;
   score: number | null;
+  isExamMode: boolean;
+  startTime: number | null;
+  endTime: number | null;
+}
+
+export interface PracticeRecord {
+  id: string;
+  sceneId: string;
+  sceneName: string;
+  sceneIcon: string;
+  score: number;
+  isPassed: boolean;
+  isExamMode: boolean;
+  duration: number;
+  completedAt: number;
+  wrongIssueTypes: IssueType[];
+  wrongPatientCount: number;
+  totalPatientCount: number;
+}
+
+export interface RecordsState {
+  records: PracticeRecord[];
+  addRecord: (record: PracticeRecord) => void;
+  clearRecords: () => void;
+  getRecordsBySceneId: (sceneId: string) => PracticeRecord[];
+  getLatestRecordBySceneId: (sceneId: string) => PracticeRecord | null;
+  getAverageScore: () => number;
+  getTotalPracticeCount: () => number;
+  getWrongIssueTypeStats: () => Record<IssueType, number>;
 }
 
 export const RECEIPT_TYPE_LABELS: Record<ReceiptType, string> = {
