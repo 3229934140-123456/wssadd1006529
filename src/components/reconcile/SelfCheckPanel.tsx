@@ -31,17 +31,35 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
       (p) => !matchedReceipts[p.id] || matchedReceipts[p.id].length === 0
     );
 
-    const patientsWithoutIssues = patients.filter(
-      (p) => !patientIssues[p.id] || patientIssues[p.id].length === 0
-    );
+    const patientsNeedingIssueCheck = patients.filter((p) => {
+      if (p.issues.length === 0) return false;
+      return !patientIssues[p.id] || patientIssues[p.id].length === 0;
+    });
+
+    const normalPatientsWithIssues = patients.filter((p) => {
+      if (p.issues.length > 0) return false;
+      const userIssues = patientIssues[p.id] || [];
+      return userIssues.length > 0;
+    });
+
+    const patientsNeedingAttention = patients.filter((p) => {
+      const hasReceipts = matchedReceipts[p.id] && matchedReceipts[p.id].length > 0;
+      if (!hasReceipts) return true;
+      if (p.issues.length === 0) return false;
+      const userIssues = patientIssues[p.id] || [];
+      return userIssues.length === 0;
+    });
 
     return {
       patientsWithoutReceipts,
-      patientsWithoutIssues,
+      patientsNeedingIssueCheck,
+      normalPatientsWithIssues,
+      patientsNeedingAttention,
       patientsWithoutReceiptsCount: patientsWithoutReceipts.length,
-      patientsWithoutIssuesCount: patientsWithoutIssues.length,
+      patientsNeedingIssueCheckCount: patientsNeedingIssueCheck.length,
+      normalPatientsWithIssuesCount: normalPatientsWithIssues.length,
       allReceiptsMatched: patientsWithoutReceipts.length === 0,
-      allIssuesMarked: patientsWithoutIssues.length === 0,
+      allIssuesHandled: patientsNeedingIssueCheck.length === 0,
     };
   }, [patients, matchedReceipts, patientIssues]);
 
@@ -54,7 +72,7 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
   const totalChecks = 3;
   const completedChecks = [
     stats.allReceiptsMatched,
-    stats.allIssuesMarked,
+    stats.allIssuesHandled,
     unmatchedReceiptCount === 0,
   ].filter(Boolean).length;
 
@@ -148,7 +166,7 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
             <div
               className={cn(
                 'flex items-start gap-3 p-3 rounded-xl border transition-colors',
-                stats.allIssuesMarked
+                stats.allIssuesHandled
                   ? 'bg-green-50 border-green-200'
                   : 'bg-orange-50 border-orange-200'
               )}
@@ -156,10 +174,10 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
               <div
                 className={cn(
                   'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                  stats.allIssuesMarked ? 'bg-green-100' : 'bg-orange-100'
+                  stats.allIssuesHandled ? 'bg-green-100' : 'bg-orange-100'
                 )}
               >
-                {stats.allIssuesMarked ? (
+                {stats.allIssuesHandled ? (
                   <CheckCircle2 className="w-5 h-5 text-green-600" />
                 ) : (
                   <AlertTriangle className="w-5 h-5 text-orange-600" />
@@ -169,7 +187,7 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                 <p
                   className={cn(
                     'font-medium text-sm',
-                    stats.allIssuesMarked ? 'text-green-700' : 'text-orange-700'
+                    stats.allIssuesHandled ? 'text-green-700' : 'text-orange-700'
                   )}
                 >
                   问题标记检查
@@ -177,16 +195,16 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                 <p
                   className={cn(
                     'text-xs mt-0.5',
-                    stats.allIssuesMarked ? 'text-green-600' : 'text-orange-600'
+                    stats.allIssuesHandled ? 'text-green-600' : 'text-orange-600'
                   )}
                 >
-                  {stats.allIssuesMarked
-                    ? '✅ 所有患者都已标记问题'
-                    : `还有 ${stats.patientsWithoutIssuesCount} 位患者没有标记任何问题：`}
+                  {stats.allIssuesHandled
+                    ? '✅ 所有需要标记问题的患者都已处理'
+                    : `还有 ${stats.patientsNeedingIssueCheckCount} 位可能存在问题的患者未标记：`}
                 </p>
-                {!stats.allIssuesMarked && onLocatePatient && (
+                {!stats.allIssuesHandled && onLocatePatient && (
                   <ul className="mt-1.5 space-y-0.5">
-                    {stats.patientsWithoutIssues.map((patient) => (
+                    {stats.patientsNeedingIssueCheck.map((patient) => (
                       <li key={patient.id}>
                         <button
                           onClick={() => handlePatientClick(patient.id)}
@@ -197,6 +215,11 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                       </li>
                     ))}
                   </ul>
+                )}
+                {stats.normalPatientsWithIssuesCount > 0 && (
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    ⚠️ 有 {stats.normalPatientsWithIssuesCount} 位正常收款患者被标记了问题，请确认是否需要取消
+                  </p>
                 )}
               </div>
             </div>
@@ -256,6 +279,7 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                   <ul className="text-xs text-blue-600 space-y-1">
                     <li>• 有些患者可能没有问题，是正常收款哦～</li>
                     <li>• 干扰凭证不需要匹配给任何患者</li>
+                    <li>• 正常收款患者只需完成凭证匹配即可</li>
                   </ul>
                 </div>
               </div>

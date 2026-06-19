@@ -84,6 +84,15 @@ export interface PracticeState {
   endTime: number | null;
 }
 
+export type OperationErrorType = 'match_error' | 'wrong_issue' | 'missing_issue' | 'amount_judgment';
+
+export const OPERATION_ERROR_LABELS: Record<OperationErrorType, string> = {
+  match_error: '匹配错误',
+  wrong_issue: '误标问题',
+  missing_issue: '漏标问题',
+  amount_judgment: '金额判断',
+};
+
 export interface PracticeRecord {
   id: string;
   sceneId: string;
@@ -95,8 +104,20 @@ export interface PracticeRecord {
   duration: number;
   completedAt: number;
   wrongIssueTypes: IssueType[];
+  operationErrors: OperationErrorType[];
   wrongPatientCount: number;
   totalPatientCount: number;
+  trainingPlan?: TrainingPlan;
+}
+
+export interface TrainingPlan {
+  id: string;
+  createdAt: number;
+  recommendedSceneId: string;
+  recommendedSceneName: string;
+  operationSteps: string[];
+  isCompleted: boolean;
+  completedAt?: number;
 }
 
 export interface RecordsState {
@@ -108,6 +129,11 @@ export interface RecordsState {
   getAverageScore: () => number;
   getTotalPracticeCount: () => number;
   getWrongIssueTypeStats: () => Record<IssueType, number>;
+  getOperationErrorStats: () => Record<OperationErrorType, number>;
+  updateTrainingPlan: (recordId: string, plan: TrainingPlan) => void;
+  completeTrainingPlan: (recordId: string) => void;
+  getPendingTrainingPlans: () => PracticeRecord[];
+  getSceneStats: () => Record<string, { avgScore: number; passRate: number; count: number; recentTrend: 'up' | 'down' | 'stable' }>;
 }
 
 export const RECEIPT_TYPE_LABELS: Record<ReceiptType, string> = {

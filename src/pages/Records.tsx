@@ -27,9 +27,11 @@ import {
   formatDate,
   getScoreLevel,
   getMostFrequentWrongIssues,
+  getMostFrequentOperationErrors,
   initialWrongStats,
+  initialOperationErrorStats,
 } from '@/store/useRecordsStore';
-import { ISSUE_TYPE_LABELS } from '@/types';
+import { ISSUE_TYPE_LABELS, OPERATION_ERROR_LABELS, OperationErrorType, TrainingPlan } from '@/types';
 
 export default function Records() {
   const navigate = useNavigate();
@@ -40,6 +42,11 @@ export default function Records() {
     getWrongIssueTypeStats,
     clearRecords,
   } = useRecordsStore();
+
+  const getOperationErrorStats = useRecordsStore((state) => state.getOperationErrorStats);
+  const getSceneStats = useRecordsStore((state) => state.getSceneStats);
+  const getPendingTrainingPlans = useRecordsStore((state) => state.getPendingTrainingPlans);
+  const completeTrainingPlan = useRecordsStore((state) => state.completeTrainingPlan);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClearModal, setShowClearModal] = useState(false);
@@ -94,6 +101,25 @@ export default function Records() {
   }, [filteredRecords]);
 
   const frequentWrongIssues = getMostFrequentWrongIssues(wrongStats, 3);
+
+  const operationErrorStats = useMemo(() => {
+    const stats = initialOperationErrorStats();
+    filteredRecords.forEach((r) => {
+      (r.operationErrors || []).forEach((err) => {
+        stats[err] = (stats[err] || 0) + 1;
+      });
+    });
+    return stats;
+  }, [filteredRecords]);
+
+  const frequentOperationErrors = getMostFrequentOperationErrors(operationErrorStats, 4);
+
+  const sceneStats = useMemo(() => getSceneStats(), [records]);
+  const pendingPlans = useMemo(() => getPendingTrainingPlans(), [records]);
+  const recordsWithPlans = useMemo(
+    () => filteredRecords.filter((r) => r.trainingPlan),
+    [filteredRecords]
+  );
 
   const totalDuration = useMemo(() => {
     return filteredRecords.reduce((sum, r) => sum + r.duration, 0);
@@ -316,6 +342,97 @@ export default function Records() {
                   </Card>
                 )}
 
+                {frequentOperationErrors.length > 0 && (
+                  <Card className="p-6 mb-8">
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
+                        <AlertTriangle className="w-5 h-5 text-purple-500" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-gray-900">操作错误分析</h2>
+                        <p className="text-sm text-gray-500">最常犯的操作错误类型</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {frequentOperationErrors.map((error, index) => (
+                        <div key={error.type} className="flex items-center gap-4">
+                          <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-semibold">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-800">{error.label}</span>
+                              <span className="text-sm text-gray-500">{error.count}次</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-purple-400 to-purple-500 rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${(error.count / frequentOperationErrors[0].count) * 100}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {Object.keys(sceneStats).length > 0 && (
+                  <Card className="p-6 mb-8">
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
+                        <BarChart3 className="w-5 h-5 text-cyan-500" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-gray-900">场景维度分析</h2>
+                        <p className="text-sm text-gray-500">按场景统计练习表现，快速定位薄弱场景</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {Object.entries(sceneStats)
+                        .sort(([, a], [, b]) => a.avgScore - b.avgScore)
+                        .map(([sceneId, stat]) => {
+                          const scene = scenes.find((s) => s.id === sceneId);
+                          const sceneName = scene ? scene.name : sceneId;
+                          return (
+                            <div key={sceneId} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-800 truncate">{sceneName}</span>
+                                  <span className="text-sm font-bold text-gray-900">{stat.avgScore}分</span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-gray-500">
+                                  <span>通过率 {stat.passRate}%</span>
+                                  <span>练习 {stat.count}次</span>
+                                  <span className="flex items-center gap-0.5">
+                                    {stat.recentTrend === 'up' && (
+                                      <svg className="w-3.5 h-3.5 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M18 15l-6-6-6 6" />
+                                      </svg>
+                                    )}
+                                    {stat.recentTrend === 'down' && (
+                                      <svg className="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M6 9l6 6 6-6" />
+                                      </svg>
+                                    )}
+                                    {stat.recentTrend === 'stable' && (
+                                      <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M5 12h14" />
+                                      </svg>
+                                    )}
+                                    {stat.recentTrend === 'up' ? '上升' : stat.recentTrend === 'down' ? '下降' : '平稳'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </Card>
+                )}
+
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-gray-800">
                     练习记录
@@ -436,11 +553,56 @@ export default function Records() {
                                         </Badge>
                                       ))}
                                     </div>
+                                  ) : record.operationErrors && record.operationErrors.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {record.operationErrors.map((err) => (
+                                        <Badge key={err} variant="warning">
+                                          {OPERATION_ERROR_LABELS[err]}
+                                        </Badge>
+                                      ))}
+                                    </div>
                                   ) : (
                                     <span className="text-sm text-gray-400">全部正确</span>
                                   )}
                                 </div>
                               </div>
+
+                              {record.trainingPlan && (
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                  <div className="text-sm font-medium text-gray-700 mb-2">训练计划</div>
+                                  <div className="bg-blue-50 rounded-xl p-4 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={record.trainingPlan.isCompleted ? 'success' : 'warning'}>
+                                        {record.trainingPlan.isCompleted ? '已完成' : '待执行'}
+                                      </Badge>
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                      <span className="font-medium">推荐场景：</span>
+                                      {record.trainingPlan.recommendedSceneName}
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                      <span className="font-medium">操作步骤：</span>
+                                      <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                                        {record.trainingPlan.operationSteps.map((step, i) => (
+                                          <li key={i} className="text-gray-600">{step}</li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                    {!record.trainingPlan.isCompleted && (
+                                      <Button
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          completeTrainingPlan(record.id);
+                                        }}
+                                      >
+                                        标记完成
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -453,6 +615,58 @@ export default function Records() {
           </>
         )}
       </div>
+
+      {pendingPlans.length > 0 && (
+        <div className="container px-4 pb-8">
+          <Card className="p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Target className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">待执行训练计划</h2>
+                <p className="text-sm text-gray-500">共 {pendingPlans.length} 条待执行</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {pendingPlans.map((plan) => (
+                <div key={plan.id} className="border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">{plan.sceneName}</div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        <span className="font-medium">推荐场景：</span>
+                        {plan.trainingPlan!.recommendedSceneName}
+                      </div>
+                    </div>
+                    <Badge variant="warning">待执行</Badge>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-3">
+                    <span className="font-medium">操作步骤：</span>
+                    <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                      {plan.trainingPlan!.operationSteps.map((step, i) => (
+                        <li key={i} className="text-gray-500">{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">
+                      创建于 {formatDate(plan.trainingPlan!.createdAt)}
+                    </span>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => completeTrainingPlan(plan.id)}
+                    >
+                      标记完成
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
 
       <Modal
         isOpen={showClearModal}

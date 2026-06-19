@@ -5,7 +5,8 @@ import { getPatientsBySceneId, getReceiptById } from '@/utils/validation';
 import { formatCurrency } from '@/utils/format';
 import { scenes } from '@/data/scenes';
 import { patients as allPatients } from '@/data/patients';
-import { ISSUE_TYPE_LABELS, RECEIPT_TYPE_LABELS, IssueType, Scene, Patient } from '@/types';
+import { ISSUE_TYPE_LABELS, RECEIPT_TYPE_LABELS, IssueType, Scene, Patient, TrainingPlan, OPERATION_ERROR_LABELS } from '@/types';
+import { useRecordsStore } from '@/store/useRecordsStore';
 import { PageContainer } from '@/components/layout';
 import { Button, ProgressRing, Accordion, Modal, AccordionItem, Badge, Card } from '@/components/ui';
 import IssueTag from '@/components/issue/IssueTag';
@@ -134,6 +135,13 @@ export default function Feedback() {
   const isExamMode = usePracticeStore((state) => state.isExamMode);
   const startTime = usePracticeStore((state) => state.startTime);
   const endTime = usePracticeStore((state) => state.endTime);
+
+  const currentRecordId = useMemo(() => {
+    if (!sceneId || !endTime) return null;
+    return `${sceneId}-${endTime}`;
+  }, [sceneId, endTime]);
+
+  const updateTrainingPlan = useRecordsStore((state) => state.updateTrainingPlan);
 
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
   const [isTeacherMode, setIsTeacherMode] = useState(true);
@@ -357,9 +365,9 @@ export default function Feedback() {
     return sortedGroups;
   }, [results, patients, matchedReceipts, patientIssues]);
 
-  const [copied, setCopied] = useState(false);
+  const [copiedVersion, setCopiedVersion] = useState<'brief' | 'detailed' | null>(null);
 
-  const generateTeacherReview = (): string => {
+  const generateTeacherReview = (version: 'brief' | 'detailed' = 'detailed'): string => {
     if (!scene || score === null || !results) return '';
 
     const wrongCount = stats.total - stats.correct;
@@ -370,6 +378,19 @@ export default function Feedback() {
       .map((r) => patients.find((p) => p.id === r.patientId)?.name || '')
       .filter(Boolean)
       .join('、');
+
+    if (version === 'brief') {
+      const lines: string[] = [];
+      lines.push(`【${scene.name}】`);
+      lines.push(`得分：${score}分（${isPassed ? '✅ 通过' : '❌ 未通过'}）`);
+      if (operationErrorGroups.length > 0) {
+        lines.push(`主要错误：${operationErrorGroups.slice(0, 2).map((g) => g.label).join('、')}`);
+      }
+      if (recommendedScenes.length > 0) {
+        lines.push(`推荐练习：${recommendedScenes.slice(0, 2).map((s) => s.name).join('、')}`);
+      }
+      return lines.join('\n');
+    }
 
     const lines: string[] = [];
 
@@ -422,18 +443,39 @@ export default function Feedback() {
     return lines.join('\n');
   };
 
-  const handleCopyReview = async () => {
-    const review = generateTeacherReview();
+  const handleCopyReview = async (version: 'brief' | 'detailed') => {
+    const review = generateTeacherReview(version);
     try {
       await navigator.clipboard.writeText(review);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedVersion(version);
+      setTimeout(() => setCopiedVersion(null), 2000);
     } catch (err) {
       console.error('复制失败:', err);
     }
   };
 
+  const generateTrainingPlan = (): TrainingPlan | null => {
+    if (!currentRecordId || !scene) return null;
+    const recScene = recommendedScenes[0];
+    const steps: string[] = [];
+    operationErrorGroups.slice(0, 3).forEach((group) => {
+      steps.push(`${group.label}：${group.nextStep}`);
+    });
+    if (steps.length === 0) {
+      steps.push('本次操作全部正确，继续保持');
+    }
+    return {
+      id: `plan-${currentRecordId}`,
+      createdAt: Date.now(),
+      recommendedSceneId: recScene?.id || sceneId || '',
+      recommendedSceneName: recScene?.name || scene.name,
+      operationSteps: steps,
+      isCompleted: false,
+    };
+  };
+
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewVersion, setReviewVersion] = useState<'brief' | 'detailed'>('detailed');
 
   const formatReceiptIds = (ids: string[]): string => {
     if (ids.length === 0) return '无';
@@ -1192,32 +1234,88 @@ export default function Feedback() {
         maxWidth="max-w-lg"
       >
         <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setReviewVersion('brief')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                reviewVersion === 'brief'
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-50 text-gray-600 border border-gray-200'
+              }`}
+            >
+              简短版
+            </button>
+            <button
+              onClick={() => setReviewVersion('detailed')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                reviewVersion === 'detailed'
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-50 text-gray-600 border border-gray-200'
+              }`}
+            >
+              详细版
+            </button>
+          </div>
           <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
             <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-              {generateTeacherReview()}
+              {generateTeacherReview(reviewVersion)}
             </pre>
           </div>
+          {copiedVersion && (
+            <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+              <CheckCircle2 className="w-4 h-4" />
+              已复制成功
+            </div>
+          )}
           <p className="text-xs text-gray-500">
-            点击下方按钮可复制完整讲评内容，粘贴后可根据实际情况调整
+            点击下方按钮可复制讲评内容，粘贴后可根据实际情况调整
           </p>
         </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setShowReviewModal(false)}>
-            关闭
+        <div className="mt-6 flex items-center justify-between">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const plan = generateTrainingPlan();
+              if (plan && currentRecordId) {
+                updateTrainingPlan(currentRecordId, plan);
+              }
+            }}
+            className="gap-2"
+          >
+            <BookOpen className="w-4 h-4" />
+            保存训练计划
           </Button>
-          <Button onClick={handleCopyReview} className="gap-2">
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" />
-                已复制
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4" />
-                复制讲评
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={() => setShowReviewModal(false)}>
+              关闭
+            </Button>
+            <Button onClick={() => handleCopyReview('brief')} className="gap-2">
+              {copiedVersion === 'brief' ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  已复制
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  复制简短版
+                </>
+              )}
+            </Button>
+            <Button onClick={() => handleCopyReview('detailed')} className="gap-2">
+              {copiedVersion === 'detailed' ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  已复制
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  复制详细版
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </Modal>
     </PageContainer>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IssueType, PracticeState, ReconciliationResult, PracticeRecord } from '../types';
+import { IssueType, PracticeState, ReconciliationResult, PracticeRecord, OperationErrorType } from '../types';
 import { calculateOverallResults } from '../utils/validation';
 import { useRecordsStore } from './useRecordsStore';
 import { scenes } from '../data/scenes';
@@ -119,19 +119,57 @@ export const usePracticeStore = create<PracticeStore>((set, get) => ({
     const scene = scenes.find((s) => s.id === currentSceneId);
     if (scene) {
       const wrongIssueTypes: IssueType[] = [];
+      const operationErrors: OperationErrorType[] = [];
       const patients = getPatientsBySceneId(currentSceneId);
-      const wrongPatientIds = results.filter((r) => !r.totalCorrect).map((r) => r.patientId);
-      
-      wrongPatientIds.forEach((pid) => {
-        const patient = patients.find((p) => p.id === pid);
-        if (patient) {
-          patient.issues.forEach((issue) => {
+      const wrongResults = results.filter((r) => !r.totalCorrect);
+      const wrongPatientIds = wrongResults.map((r) => r.patientId);
+
+      let hasMatchError = false;
+      let hasWrongIssue = false;
+      let hasMissingIssue = false;
+      let hasAmountJudgment = false;
+
+      wrongResults.forEach((r) => {
+        const patient = patients.find((p) => p.id === r.patientId);
+        if (!patient) return;
+
+        if (!r.isMatchCorrect) hasMatchError = true;
+
+        const userIssues = patientIssues[r.patientId] || [];
+        const expectedIssues = patient.issues;
+        const userIssueSet = new Set(userIssues);
+        const expectedIssueSet = new Set(expectedIssues);
+
+        const userHasWrongIssue = userIssues.some((i) => !expectedIssueSet.has(i));
+        if (userHasWrongIssue) hasWrongIssue = true;
+
+        const userHasMissingIssue = expectedIssues.some((i) => !userIssueSet.has(i));
+        if (userHasMissingIssue) hasMissingIssue = true;
+
+        const hasAmountType = expectedIssues.some((i) =>
+          ['duplicate_payment', 'amount_mismatch', 'discount_not_approved', 'refund_not_recorded'].includes(i)
+        );
+        if (hasAmountType && !r.isIssueCorrect) hasAmountJudgment = true;
+
+        patient.issues.forEach((issue) => {
+          if (!wrongIssueTypes.includes(issue)) {
+            wrongIssueTypes.push(issue);
+          }
+        });
+
+        if (userHasWrongIssue && expectedIssues.length === 0) {
+          userIssues.forEach((issue) => {
             if (!wrongIssueTypes.includes(issue)) {
               wrongIssueTypes.push(issue);
             }
           });
         }
       });
+
+      if (hasMatchError && !operationErrors.includes('match_error')) operationErrors.push('match_error');
+      if (hasWrongIssue && !operationErrors.includes('wrong_issue')) operationErrors.push('wrong_issue');
+      if (hasMissingIssue && !operationErrors.includes('missing_issue')) operationErrors.push('missing_issue');
+      if (hasAmountJudgment && !operationErrors.includes('amount_judgment')) operationErrors.push('amount_judgment');
 
       const record: PracticeRecord = {
         id: `${currentSceneId}-${Date.now()}`,
@@ -144,6 +182,7 @@ export const usePracticeStore = create<PracticeStore>((set, get) => ({
         duration,
         completedAt: endTime,
         wrongIssueTypes,
+        operationErrors,
         wrongPatientCount: wrongPatientIds.length,
         totalPatientCount: results.length,
       };
