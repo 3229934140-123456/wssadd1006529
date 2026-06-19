@@ -25,6 +25,12 @@ import {
   TrendingUp,
   Sparkles,
   Play,
+  Copy,
+  Check,
+  Layers,
+  AlertTriangle,
+  XSquare,
+  Calculator,
 } from 'lucide-react';
 
 const EXAM_PASS_SCORE = 80;
@@ -58,6 +64,64 @@ interface WrongIssueGroup {
   patients: WrongPatientDetail[];
   suggestion: string;
 }
+
+type OperationErrorType = 'match_error' | 'wrong_issue' | 'missing_issue' | 'amount_judgment';
+
+interface OperationErrorGroup {
+  type: OperationErrorType;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+  description: string;
+  count: number;
+  patients: WrongPatientDetail[];
+  suggestion: string;
+  nextStep: string;
+}
+
+const OPERATION_ERROR_CONFIG: Record<OperationErrorType, Omit<OperationErrorGroup, 'count' | 'patients'>> = {
+  match_error: {
+    type: 'match_error',
+    label: '匹配错误',
+    icon: <XCircle className="w-5 h-5" />,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
+    description: '凭证匹配不正确，包括漏匹配或错匹配',
+    suggestion: '仔细核对患者姓名、治疗项目和金额，逐笔匹配，注意干扰凭证',
+    nextStep: '先练习凭证匹配基础关，重点关注付款人姓名和交易时间',
+  },
+  wrong_issue: {
+    type: 'wrong_issue',
+    label: '误标问题',
+    icon: <AlertTriangle className="w-5 h-5" />,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50',
+    description: '正常收款的患者被错误标记了问题',
+    suggestion: '不要为了凑数而硬找问题，有些患者就是正常收款的',
+    nextStep: '复习正常收款的判定标准，先从简单场景练起',
+  },
+  missing_issue: {
+    type: 'missing_issue',
+    label: '漏标问题',
+    icon: <Target className="w-5 h-5" />,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    description: '有问题的患者没有被识别出来或漏标了问题类型',
+    suggestion: '重点关注金额不符、缺少凭证、退款异常等明显信号',
+    nextStep: '强化问题识别训练，每种问题类型各练3题找感觉',
+  },
+  amount_judgment: {
+    type: 'amount_judgment',
+    label: '金额判断',
+    icon: <Calculator className="w-5 h-5" />,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    description: '对金额计算或判断有误，如重复收款、金额不符等',
+    suggestion: '每次都算一遍应收和实收是否一致，注意减免、退款等特殊情况',
+    nextStep: '专门练金额计算相关的题，先学门诊收费构成',
+  },
+};
 
 export default function Feedback() {
   const { sceneId } = useParams<{ sceneId: string }>();
@@ -209,6 +273,167 @@ export default function Feedback() {
 
     return sortedGroups;
   }, [results, patients, matchedReceipts, patientIssues]);
+
+  const operationErrorGroups = useMemo((): OperationErrorGroup[] => {
+    if (!results || !patients.length) return [];
+    const allDetails: WrongPatientDetail[] = results
+      .filter((r) => !r.totalCorrect)
+      .map((result) => {
+        const patient = patients.find((p) => p.id === result.patientId)!;
+        return {
+          patient,
+          result: {
+            patientId: result.patientId,
+            isMatchCorrect: result.isMatchCorrect,
+            isIssueCorrect: result.isIssueCorrect,
+            totalCorrect: result.totalCorrect,
+          },
+          userMatchedIds: matchedReceipts[patient.id] || [],
+          userIssues: patientIssues[patient.id] || [],
+        };
+      })
+      .filter((d) => d.patient);
+
+    const groups = new Map<OperationErrorType, WrongPatientDetail[]>();
+
+    allDetails.forEach((detail) => {
+      const { patient, userMatchedIds, userIssues, result } = detail;
+      const expectedIssues = patient.issues;
+      const userIssueSet = new Set(userIssues);
+      const expectedIssueSet = new Set(expectedIssues);
+
+      if (!result.isMatchCorrect) {
+        if (!groups.has('match_error')) {
+          groups.set('match_error', []);
+        }
+        groups.get('match_error')!.push(detail);
+      }
+
+      const hasWrongIssue = userIssues.some((i) => !expectedIssueSet.has(i));
+      const hasAmountIssue = expectedIssues.some((i) =>
+        ['duplicate_payment', 'amount_mismatch', 'discount_not_approved', 'refund_not_recorded'].includes(i)
+      );
+      const hasMissingIssue = expectedIssues.some((i) => !userIssueSet.has(i));
+
+      if (hasWrongIssue && expectedIssues.length === 0) {
+        if (!groups.has('wrong_issue')) {
+          groups.set('wrong_issue', []);
+        }
+        if (!groups.get('wrong_issue')!.find((d) => d.patient.id === patient.id)) {
+          groups.get('wrong_issue')!.push(detail);
+        }
+      }
+
+      if (hasMissingIssue && expectedIssues.length > 0) {
+        if (!groups.has('missing_issue')) {
+          groups.set('missing_issue', []);
+        }
+        if (!groups.get('missing_issue')!.find((d) => d.patient.id === patient.id)) {
+          groups.get('missing_issue')!.push(detail);
+        }
+      }
+
+      if (hasAmountIssue && !result.isIssueCorrect) {
+        if (!groups.has('amount_judgment')) {
+          groups.set('amount_judgment', []);
+        }
+        if (!groups.get('amount_judgment')!.find((d) => d.patient.id === patient.id)) {
+          groups.get('amount_judgment')!.push(detail);
+        }
+      }
+    });
+
+    const sortedGroups: OperationErrorGroup[] = (['match_error', 'missing_issue', 'wrong_issue', 'amount_judgment'] as OperationErrorType[])
+      .map((type) => {
+        const patients = groups.get(type) || [];
+        return {
+          ...OPERATION_ERROR_CONFIG[type],
+          count: patients.length,
+          patients,
+        };
+      })
+      .filter((g) => g.count > 0);
+
+    return sortedGroups;
+  }, [results, patients, matchedReceipts, patientIssues]);
+
+  const [copied, setCopied] = useState(false);
+
+  const generateTeacherReview = (): string => {
+    if (!scene || score === null || !results) return '';
+
+    const wrongCount = stats.total - stats.correct;
+    const topOperationError = operationErrorGroups[0];
+    const topIssueError = wrongIssueGroups[0];
+    const wrongPatients = results
+      .filter((r) => !r.totalCorrect)
+      .map((r) => patients.find((p) => p.id === r.patientId)?.name || '')
+      .filter(Boolean)
+      .join('、');
+
+    const lines: string[] = [];
+
+    lines.push(`【日清对账考核讲评 - ${scene.name}】`);
+    lines.push('');
+    lines.push(`📊 成绩概况`);
+    lines.push(`得分：${score} 分（${isPassed ? '✅ 通过' : '❌ 未通过'}）`);
+    lines.push(`正确率：${accuracy}%（${stats.correct}/${stats.total} 位患者）`);
+    lines.push(`用时：${duration.minutes}分${duration.seconds.toString().padStart(2, '0')}秒`);
+    lines.push(`错误患者：${wrongCount} 人`);
+    lines.push('');
+
+    if (operationErrorGroups.length > 0) {
+      lines.push(`🎯 主要错误类型`);
+      operationErrorGroups.slice(0, 3).forEach((group, idx) => {
+        lines.push(`${idx + 1}. ${group.label}（${group.count}人）- ${group.description}`);
+      });
+      lines.push('');
+    }
+
+    if (wrongIssueGroups.length > 0) {
+      lines.push(`⚠️ 最常出错的问题`);
+      wrongIssueGroups.slice(0, 3).forEach((group, idx) => {
+        lines.push(`${idx + 1}. ${group.label}（${group.count}次）`);
+      });
+      lines.push('');
+    }
+
+    if (wrongPatients) {
+      lines.push(`👤 需要重点关注的患者`);
+      lines.push(wrongPatients);
+      lines.push('');
+    }
+
+    lines.push(`💡 下一步建议`);
+    if (topOperationError) {
+      lines.push(`1. 优先加强【${topOperationError.label}】训练`);
+      lines.push(`   ${topOperationError.nextStep}`);
+    }
+    if (topIssueError) {
+      lines.push(`2. 重点突破【${topIssueError.label}】问题类型`);
+      lines.push(`   ${topIssueError.suggestion}`);
+    }
+    if (recommendedScenes.length > 0) {
+      lines.push(`3. 推荐练习场景：${recommendedScenes.slice(0, 2).map((s) => s.name).join('、')}`);
+    }
+    lines.push('');
+    lines.push('— 带教老师评语');
+
+    return lines.join('\n');
+  };
+
+  const handleCopyReview = async () => {
+    const review = generateTeacherReview();
+    try {
+      await navigator.clipboard.writeText(review);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  };
+
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const formatReceiptIds = (ids: string[]): string => {
     if (ids.length === 0) return '无';
@@ -544,17 +769,30 @@ export default function Feedback() {
               <TrendingUp className="w-5 h-5 text-orange-500" />
               错题分析
             </h2>
-            <button
-              onClick={() => setIsTeacherMode(!isTeacherMode)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                isTeacherMode
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'bg-gray-100 text-gray-600 border border-gray-200'
-              }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              {isTeacherMode ? '带教模式' : '普通模式'}
-            </button>
+            <div className="flex items-center gap-2">
+              {isExamMode && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowReviewModal(true)}
+                  className="gap-1.5"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  带讲评导出
+                </Button>
+              )}
+              <button
+                onClick={() => setIsTeacherMode(!isTeacherMode)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  isTeacherMode
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                }`}
+              >
+                <BookOpen className="w-4 h-4" />
+                {isTeacherMode ? '带教模式' : '普通模式'}
+              </button>
+            </div>
           </div>
           <Card className="p-5">
             <div className="space-y-4">
@@ -582,6 +820,116 @@ export default function Feedback() {
               </div>
             </div>
           </Card>
+        </div>
+      )}
+
+      {operationErrorGroups.length > 0 && isTeacherMode && (
+        <div className="mb-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Layers className="w-5 h-5 text-indigo-500" />
+            操作错误分类
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            {operationErrorGroups.map((group) => (
+              <div
+                key={group.type}
+                className={`${group.bgColor} rounded-xl p-4 border border-gray-100`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`p-1.5 rounded-lg bg-white/60 ${group.color}`}>
+                    {group.icon}
+                  </div>
+                  <span className={`font-semibold text-sm ${group.color}`}>{group.label}</span>
+                </div>
+                <div className="text-2xl font-bold text-gray-900 mb-1">
+                  {group.count}
+                  <span className="text-sm font-normal text-gray-500 ml-1">人</span>
+                </div>
+                <p className="text-xs text-gray-500 line-clamp-2">{group.description}</p>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-4">
+            {operationErrorGroups.map((group) => (
+              <div
+                key={group.type}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+              >
+                <div className={`px-5 py-4 border-b border-gray-100 ${group.bgColor}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-lg bg-white/80 ${group.color}`}>
+                        {group.icon}
+                      </div>
+                      <span className="font-bold text-gray-900">{group.label}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-white/60 text-gray-600 text-xs font-medium">
+                        {group.count} 人
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1.5 ml-11">{group.description}</p>
+                </div>
+                <div className="p-5 space-y-3">
+                  {group.patients.slice(0, 3).map((detail) => {
+                    const hasMatchError = !detail.result.isMatchCorrect;
+                    const hasIssueError = !detail.result.isIssueCorrect;
+                    return (
+                      <div
+                        key={detail.patient.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-gray-50/50 border border-gray-100"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0">
+                            <span className="text-sm font-semibold text-gray-700">
+                              {detail.patient.name.charAt(0)}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {detail.patient.name}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {detail.patient.treatmentItem}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {hasMatchError && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                              匹配错
+                            </span>
+                          )}
+                          {hasIssueError && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">
+                              问题错
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {group.patients.length > 3 && (
+                    <p className="text-xs text-gray-400 text-center pt-1">
+                      还有 {group.patients.length - 3} 位患者...
+                    </p>
+                  )}
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-start gap-2">
+                      <Lightbulb className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                      <div>
+                        <div className="text-xs font-semibold text-amber-700 mb-1">
+                          下一步建议
+                        </div>
+                        <p className="text-xs text-amber-900">
+                          {group.nextStep}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -833,6 +1181,42 @@ export default function Feedback() {
         <div className="mt-6 flex justify-end">
           <Button onClick={() => setShowKnowledgeModal(false)}>
             我知道了
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        title="带教讲评清单"
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+              {generateTeacherReview()}
+            </pre>
+          </div>
+          <p className="text-xs text-gray-500">
+            点击下方按钮可复制完整讲评内容，粘贴后可根据实际情况调整
+          </p>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="secondary" onClick={() => setShowReviewModal(false)}>
+            关闭
+          </Button>
+          <Button onClick={handleCopyReview} className="gap-2">
+            {copied ? (
+              <>
+                <Check className="w-4 h-4" />
+                已复制
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4" />
+                复制讲评
+              </>
+            )}
           </Button>
         </div>
       </Modal>

@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePracticeStore } from '@/store/usePracticeStore';
 import { getPatientsBySceneId, getReceiptsBySceneId } from '@/utils/validation';
@@ -39,6 +39,8 @@ export default function Reconcile() {
   const isExamMode = usePracticeStore((state) => state.isExamMode);
   const startTime = usePracticeStore((state) => state.startTime);
   const startTimer = usePracticeStore((state) => state.startTimer);
+
+  const [pendingPatientId, setPendingPatientId] = useState<string | null>(null);
 
   const scene = useMemo(() => scenes.find((s) => s.id === sceneId), [sceneId]);
   const patients = useMemo(() => (sceneId ? getPatientsBySceneId(sceneId) : []), [sceneId]);
@@ -91,6 +93,10 @@ export default function Reconcile() {
         element.classList.remove('highlight-flash');
       }, 1500);
     }
+    setPendingPatientId(patientId);
+    setTimeout(() => {
+      setPendingPatientId((current) => (current === patientId ? null : current));
+    }, 3000);
   };
 
   useEffect(() => {
@@ -275,6 +281,7 @@ export default function Reconcile() {
               key={patient.id}
               patient={patient}
               isExamMode={isExamMode}
+              isPending={pendingPatientId === patient.id}
             />
           ))}
         </div>

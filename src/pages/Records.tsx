@@ -252,7 +252,7 @@ export default function Records() {
                           {timeRange === '30d' && ' · 最近30天'}
                         </span>
                       </div>
-                      <ScoreTrendChart records={chartRecords} />
+                      <ScoreTrendChart records={chartRecords} scenes={scenes} />
                     </>
                   ) : (
                     <Card className="p-6">

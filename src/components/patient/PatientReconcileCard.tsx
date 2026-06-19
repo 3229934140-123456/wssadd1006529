@@ -31,6 +31,7 @@ import {
 interface PatientReconcileCardProps {
   patient: Patient;
   isExamMode?: boolean;
+  isPending?: boolean;
 }
 
 const paymentMethodColors: Record<string, string> = {
@@ -115,6 +116,7 @@ function MiniReceiptCard({
 export default function PatientReconcileCard({
   patient,
   isExamMode = false,
+  isPending = false,
 }: PatientReconcileCardProps) {
   const matchedReceiptIds = usePracticeStore(
     (state) => state.matchedReceipts[patient.id] || []
@@ -179,6 +181,14 @@ export default function PatientReconcileCard({
     <div id={`patient-card-${patient.id}`} className="transition-all duration-300">
       <DropZone onDrop={handleDrop} className="border border-gray-200">
         <div className="bg-white rounded-xl overflow-hidden">
+          {isPending && (
+            <div className="px-4 py-2 bg-gradient-to-r from-amber-100 to-yellow-100 border-b border-amber-200 flex items-center gap-2 animate-pulse">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="text-xs font-medium text-amber-800">
+                待处理 - 请检查该患者的凭证和问题
+              </span>
+            </div>
+          )}
           <div
             className={cn(
               'px-4 py-3 border-b',
