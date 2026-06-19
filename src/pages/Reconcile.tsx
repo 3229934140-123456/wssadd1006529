@@ -82,6 +82,17 @@ export default function Reconcile() {
     handleSubmit();
   };
 
+  const handleLocatePatient = (patientId: string) => {
+    const element = document.getElementById(`patient-card-${patientId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('highlight-flash');
+      setTimeout(() => {
+        element.classList.remove('highlight-flash');
+      }, 1500);
+    }
+  };
+
   useEffect(() => {
     if (isExamMode && startTime === null && scene) {
       startTimer();
@@ -237,7 +248,11 @@ export default function Reconcile() {
               <div className="flex gap-4 pb-2">
                 {unmatchedReceipts.map((receipt) => (
                   <div key={receipt.id} className="shrink-0 w-56">
-                    <DraggableReceipt receipt={receipt} hideDecoy={isExamMode} />
+                    <DraggableReceipt
+                      receipt={receipt}
+                      hideDecoy={isExamMode}
+                      hideExamSpoilers={isExamMode}
+                    />
                   </div>
                 ))}
               </div>
@@ -256,7 +271,11 @@ export default function Reconcile() {
         </div>
         <div className="grid grid-cols-2 gap-5">
           {patients.map((patient) => (
-            <PatientReconcileCard key={patient.id} patient={patient} />
+            <PatientReconcileCard
+              key={patient.id}
+              patient={patient}
+              isExamMode={isExamMode}
+            />
           ))}
         </div>
       </div>
@@ -281,6 +300,7 @@ export default function Reconcile() {
           patients={patients}
           unmatchedReceiptCount={unmatchedReceipts.length}
           noFixed
+          onLocatePatient={handleLocatePatient}
         />
       </div>
     </PageContainer>

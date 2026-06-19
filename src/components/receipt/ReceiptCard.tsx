@@ -19,7 +19,16 @@ interface ReceiptCardProps {
   selected?: boolean;
   onClick?: () => void;
   hideDecoy?: boolean;
+  hideExamSpoilers?: boolean;
 }
+
+const SPOILER_KEYWORDS = ['测试', '其他', '干扰', '虚拟', '模拟', '示例', '演示'];
+
+const maskSpoilerName = (name: string): string => {
+  const hasSpoiler = SPOILER_KEYWORDS.some((keyword) => name.includes(keyword));
+  if (!hasSpoiler) return name;
+  return name.charAt(0) + '*'.repeat(Math.max(name.length - 1, 1));
+};
 
 interface ReceiptStyleConfig {
   gradient: string;
@@ -116,12 +125,17 @@ export default function ReceiptCard({
   selected,
   onClick,
   hideDecoy = false,
+  hideExamSpoilers = false,
 }: ReceiptCardProps) {
   const style = receiptStyles[receipt.type];
   const isRefund = receipt.type === 'refund';
   const isDiscount = receipt.type === 'discount';
   const isZeroAmount = receipt.amount === 0;
   const showDecoy = receipt.isDecoy && !hideDecoy;
+  const showNote = receipt.note && !hideExamSpoilers;
+  const displayPayerName = hideExamSpoilers && receipt.payerName
+    ? maskSpoilerName(receipt.payerName)
+    : receipt.payerName;
 
   return (
     <div
@@ -193,7 +207,7 @@ export default function ReceiptCard({
             <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             <span className="text-gray-500">付款人:</span>
             <span className="text-gray-900 font-medium truncate">
-              {receipt.payerName || '未知'}
+              {displayPayerName || '未知'}
             </span>
           </div>
 
@@ -225,7 +239,7 @@ export default function ReceiptCard({
             </div>
           )}
 
-          {receipt.note && (
+          {showNote && (
             <div className="pt-1 mt-1 border-t border-gray-100">
               <p className="text-xs text-gray-500 line-clamp-2">
                 {receipt.note}

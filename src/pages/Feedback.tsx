@@ -5,7 +5,7 @@ import { getPatientsBySceneId, getReceiptById } from '@/utils/validation';
 import { formatCurrency } from '@/utils/format';
 import { scenes } from '@/data/scenes';
 import { patients as allPatients } from '@/data/patients';
-import { ISSUE_TYPE_LABELS, RECEIPT_TYPE_LABELS, IssueType, Scene } from '@/types';
+import { ISSUE_TYPE_LABELS, RECEIPT_TYPE_LABELS, IssueType, Scene, Patient } from '@/types';
 import { PageContainer } from '@/components/layout';
 import { Button, ProgressRing, Accordion, Modal, AccordionItem, Badge, Card } from '@/components/ui';
 import IssueTag from '@/components/issue/IssueTag';
@@ -29,6 +29,36 @@ import {
 
 const EXAM_PASS_SCORE = 80;
 
+const ISSUE_TYPE_SUGGESTIONS: Record<IssueType, string> = {
+  not_received: '建议先核对POS机交易流水和微信支付宝商户后台，确认款项是否真的未到账',
+  duplicate_payment: '建议先核对POS机交易流水号，确认是否真的重复扣款，再联系患者退款',
+  missing_invoice: '建议核对开票系统，确认是否漏开，及时补开并通知患者',
+  refund_not_recorded: '建议核对退款审批单和银行流水，确认退款是否已执行并登记',
+  amount_mismatch: '建议重新核算患者费用明细，确认是否有遗漏项目或计算错误',
+  discount_not_approved: '建议核对减免单是否有医生签字和店长审批，按规定流程走',
+  wrong_payment_method: '建议核对患者实际支付方式，确保与系统记录一致，避免后续对账混乱',
+};
+
+interface WrongPatientDetail {
+  patient: Patient;
+  result: {
+    patientId: string;
+    isMatchCorrect: boolean;
+    isIssueCorrect: boolean;
+    totalCorrect: boolean;
+  };
+  userMatchedIds: string[];
+  userIssues: IssueType[];
+}
+
+interface WrongIssueGroup {
+  type: IssueType;
+  label: string;
+  count: number;
+  patients: WrongPatientDetail[];
+  suggestion: string;
+}
+
 export default function Feedback() {
   const { sceneId } = useParams<{ sceneId: string }>();
   const navigate = useNavigate();
@@ -42,6 +72,7 @@ export default function Feedback() {
   const endTime = usePracticeStore((state) => state.endTime);
 
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+  const [isTeacherMode, setIsTeacherMode] = useState(true);
 
   const scene = useMemo(() => scenes.find((s) => s.id === sceneId), [sceneId]);
   const patients = useMemo(() => (sceneId ? getPatientsBySceneId(sceneId) : []), [sceneId]);
@@ -130,6 +161,71 @@ export default function Feedback() {
     });
     return Array.from(points.entries());
   }, [patients]);
+
+  const wrongIssueGroups = useMemo((): WrongIssueGroup[] => {
+    if (!results || !patients.length) return [];
+    const wrongResults = results.filter((r) => !r.totalCorrect);
+    const issueGroups = new Map<IssueType, WrongPatientDetail[]>();
+
+    wrongResults.forEach((result) => {
+      const patient = patients.find((p) => p.id === result.patientId);
+      if (!patient) return;
+
+      const userMatchedIds = matchedReceipts[patient.id] || [];
+      const userIssues = patientIssues[patient.id] || [];
+
+      const detail: WrongPatientDetail = {
+        patient,
+        result: {
+          patientId: result.patientId,
+          isMatchCorrect: result.isMatchCorrect,
+          isIssueCorrect: result.isIssueCorrect,
+          totalCorrect: result.totalCorrect,
+        },
+        userMatchedIds,
+        userIssues,
+      };
+
+      patient.issues.forEach((issue) => {
+        if (!issueGroups.has(issue)) {
+          issueGroups.set(issue, []);
+        }
+        const existing = issueGroups.get(issue)!;
+        if (!existing.find((d) => d.patient.id === patient.id)) {
+          existing.push(detail);
+        }
+      });
+    });
+
+    const sortedGroups = Array.from(issueGroups.entries())
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([type, patients]) => ({
+        type,
+        label: ISSUE_TYPE_LABELS[type],
+        count: patients.length,
+        patients,
+        suggestion: ISSUE_TYPE_SUGGESTIONS[type],
+      }));
+
+    return sortedGroups;
+  }, [results, patients, matchedReceipts, patientIssues]);
+
+  const formatReceiptIds = (ids: string[]): string => {
+    if (ids.length === 0) return '无';
+    return ids
+      .map((id) => {
+        const receipt = getReceiptById(id);
+        return receipt
+          ? `${RECEIPT_TYPE_LABELS[receipt.type]} ${formatCurrency(receipt.amount)}`
+          : id;
+      })
+      .join('、');
+  };
+
+  const formatIssueTypes = (issues: IssueType[]): string => {
+    if (issues.length === 0) return '无';
+    return issues.map((i) => ISSUE_TYPE_LABELS[i]).join('、');
+  };
 
   const handleRetry = () => {
     if (sceneId) {
@@ -443,10 +539,23 @@ export default function Feedback() {
 
       {wrongIssueStats.length > 0 && (
         <div className="mb-6">
-          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-orange-500" />
-            错题分析
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-orange-500" />
+              错题分析
+            </h2>
+            <button
+              onClick={() => setIsTeacherMode(!isTeacherMode)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                isTeacherMode
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-100 text-gray-600 border border-gray-200'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              {isTeacherMode ? '带教模式' : '普通模式'}
+            </button>
+          </div>
           <Card className="p-5">
             <div className="space-y-4">
               <p className="text-sm text-gray-500">
@@ -473,6 +582,133 @@ export default function Feedback() {
               </div>
             </div>
           </Card>
+        </div>
+      )}
+
+      {wrongIssueGroups.length > 0 && isTeacherMode && (
+        <div className="mb-6">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-blue-500" />
+            错题详情
+          </h2>
+          <div className="space-y-6">
+            {wrongIssueGroups.map((group) => (
+              <div key={group.type} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <IssueTag issue={group.type} />
+                      <span className="font-bold text-gray-900">{group.label}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                        {group.count} 人
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-5 space-y-4">
+                  {group.patients.map((detail, idx) => {
+                    const hasMatchError = !detail.result.isMatchCorrect;
+                    const hasIssueError = !detail.result.isIssueCorrect;
+                    const bgClass = hasMatchError
+                      ? 'bg-red-50 border-red-100'
+                      : hasIssueError
+                      ? 'bg-orange-50 border-orange-100'
+                      : 'bg-gray-50 border-gray-200';
+
+                    return (
+                      <div
+                        key={detail.patient.id}
+                        className={`rounded-xl border ${bgClass} p-4 ${idx < group.patients.length - 1 ? '' : ''}`}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0">
+                              <span className="font-semibold text-gray-700">
+                                {detail.patient.name.charAt(0)}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-gray-900">
+                                {detail.patient.name} - {detail.patient.treatmentItem}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {detail.patient.gender} · {detail.patient.age}岁 · 应收 {formatCurrency(detail.patient.receivableAmount)}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {hasMatchError && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-100 text-red-700 text-xs font-medium">
+                                <XCircle className="w-3 h-3" />
+                                匹配错误
+                              </span>
+                            )}
+                            {hasIssueError && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-100 text-orange-700 text-xs font-medium">
+                                <XCircle className="w-3 h-3" />
+                                问题识别错误
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5 text-sm">
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 shrink-0 w-20">正确凭证：</span>
+                            <span className="text-gray-900 font-medium">
+                              {formatReceiptIds(detail.patient.expectedReceiptIds)}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 shrink-0 w-20">你的选择：</span>
+                            <span className={hasMatchError ? 'text-red-700 font-medium' : 'text-green-700 font-medium'}>
+                              {formatReceiptIds(detail.userMatchedIds)}
+                              {hasMatchError ? (
+                                <XCircle className="w-4 h-4 inline ml-1 text-red-500" />
+                              ) : (
+                                <CheckCircle2 className="w-4 h-4 inline ml-1 text-green-500" />
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 shrink-0 w-20">正确问题：</span>
+                            <span className="text-gray-900 font-medium">
+                              {formatIssueTypes(detail.patient.issues)}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 shrink-0 w-20">你标问题：</span>
+                            <span className={hasIssueError ? 'text-orange-700 font-medium' : 'text-green-700 font-medium'}>
+                              {formatIssueTypes(detail.userIssues)}
+                              {hasIssueError ? (
+                                <XCircle className="w-4 h-4 inline ml-1 text-orange-500" />
+                              ) : (
+                                <CheckCircle2 className="w-4 h-4 inline ml-1 text-green-500" />
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                          <div className="flex items-start gap-2">
+                            <Lightbulb className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                            <div>
+                              <div className="text-xs font-semibold text-blue-700 mb-1">
+                                下一步建议
+                              </div>
+                              <p className="text-sm text-blue-900 leading-relaxed">
+                                {group.suggestion}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

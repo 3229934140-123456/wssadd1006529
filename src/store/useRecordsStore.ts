@@ -102,3 +102,5 @@ export const getMostFrequentWrongIssues = (
       count,
     }));
 };
+
+export { initialWrongStats };

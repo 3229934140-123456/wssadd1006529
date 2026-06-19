@@ -18,6 +18,7 @@ interface ReceiptTabsProps {
   onReceiptClick?: (receipt: Receipt) => void;
   selectedReceiptIds?: string[];
   hideDecoy?: boolean;
+  hideExamSpoilers?: boolean;
 }
 
 type TabKey =
@@ -110,6 +111,7 @@ export default function ReceiptTabs({
   onReceiptClick,
   selectedReceiptIds = [],
   hideDecoy = false,
+  hideExamSpoilers = false,
 }: ReceiptTabsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
 
@@ -200,6 +202,7 @@ export default function ReceiptTabs({
               selected={selectedReceiptIds.includes(receipt.id)}
               onClick={() => onReceiptClick?.(receipt)}
               hideDecoy={hideDecoy}
+              hideExamSpoilers={hideExamSpoilers}
             />
           ))
         )}

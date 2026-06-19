@@ -219,6 +219,7 @@ export default function BillView() {
                 receipts={receipts}
                 onReceiptClick={(receipt) => setPreviewReceipt(receipt)}
                 hideDecoy={isExamMode}
+                hideExamSpoilers={isExamMode}
               />
             </div>
           </div>
@@ -258,6 +259,7 @@ export default function BillView() {
         receipt={previewReceipt}
         onClose={() => setPreviewReceipt(null)}
         hideDecoy={isExamMode}
+        hideExamSpoilers={isExamMode}
       />
     </PageContainer>
   );

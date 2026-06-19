@@ -18,9 +18,10 @@ interface SelfCheckPanelProps {
   unmatchedReceiptCount: number;
   className?: string;
   noFixed?: boolean;
+  onLocatePatient?: (patientId: string) => void;
 }
 
-export default function SelfCheckPanel({ patients, unmatchedReceiptCount, className, noFixed = false }: SelfCheckPanelProps) {
+export default function SelfCheckPanel({ patients, unmatchedReceiptCount, className, noFixed = false, onLocatePatient }: SelfCheckPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const matchedReceipts = usePracticeStore((state) => state.matchedReceipts);
   const patientIssues = usePracticeStore((state) => state.patientIssues);
@@ -35,12 +36,20 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
     );
 
     return {
+      patientsWithoutReceipts,
+      patientsWithoutIssues,
       patientsWithoutReceiptsCount: patientsWithoutReceipts.length,
       patientsWithoutIssuesCount: patientsWithoutIssues.length,
       allReceiptsMatched: patientsWithoutReceipts.length === 0,
       allIssuesMarked: patientsWithoutIssues.length === 0,
     };
   }, [patients, matchedReceipts, patientIssues]);
+
+  const handlePatientClick = (patientId: string) => {
+    if (onLocatePatient) {
+      onLocatePatient(patientId);
+    }
+  };
 
   const totalChecks = 3;
   const completedChecks = [
@@ -117,8 +126,22 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                 >
                   {stats.allReceiptsMatched
                     ? '✅ 所有患者都已匹配凭证'
-                    : `还有 ${stats.patientsWithoutReceiptsCount} 位患者没有匹配任何凭证`}
+                    : `还有 ${stats.patientsWithoutReceiptsCount} 位患者没有匹配任何凭证：`}
                 </p>
+                {!stats.allReceiptsMatched && onLocatePatient && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {stats.patientsWithoutReceipts.map((patient) => (
+                      <li key={patient.id}>
+                        <button
+                          onClick={() => handlePatientClick(patient.id)}
+                          className="text-xs text-blue-600 underline hover:bg-blue-100 hover:text-blue-800 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                        >
+                          • {patient.name} (点击定位)
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 
@@ -159,8 +182,22 @@ export default function SelfCheckPanel({ patients, unmatchedReceiptCount, classN
                 >
                   {stats.allIssuesMarked
                     ? '✅ 所有患者都已标记问题'
-                    : `还有 ${stats.patientsWithoutIssuesCount} 位患者没有标记任何问题`}
+                    : `还有 ${stats.patientsWithoutIssuesCount} 位患者没有标记任何问题：`}
                 </p>
+                {!stats.allIssuesMarked && onLocatePatient && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {stats.patientsWithoutIssues.map((patient) => (
+                      <li key={patient.id}>
+                        <button
+                          onClick={() => handlePatientClick(patient.id)}
+                          className="text-xs text-blue-600 underline hover:bg-blue-100 hover:text-blue-800 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                        >
+                          • {patient.name} (点击定位)
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 

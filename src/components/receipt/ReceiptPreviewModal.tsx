@@ -24,7 +24,16 @@ interface ReceiptPreviewModalProps {
   receipt: Receipt | null;
   onClose: () => void;
   hideDecoy?: boolean;
+  hideExamSpoilers?: boolean;
 }
+
+const SPOILER_KEYWORDS = ['测试', '其他', '干扰', '虚拟', '模拟', '示例', '演示'];
+
+const maskSpoilerName = (name: string): string => {
+  const hasSpoiler = SPOILER_KEYWORDS.some((keyword) => name.includes(keyword));
+  if (!hasSpoiler) return name;
+  return name.charAt(0) + '*'.repeat(Math.max(name.length - 1, 1));
+};
 
 interface PreviewStyleConfig {
   bg: string;
@@ -102,6 +111,7 @@ export default function ReceiptPreviewModal({
   receipt,
   onClose,
   hideDecoy = false,
+  hideExamSpoilers = false,
 }: ReceiptPreviewModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -124,6 +134,10 @@ export default function ReceiptPreviewModal({
   const isDiscount = receipt.type === 'discount';
   const isZeroAmount = receipt.amount === 0;
   const showDecoy = receipt.isDecoy && !hideDecoy;
+  const showNote = receipt.note && !hideExamSpoilers;
+  const displayPayerName = hideExamSpoilers && receipt.payerName
+    ? maskSpoilerName(receipt.payerName)
+    : receipt.payerName;
 
   return (
     <div
@@ -209,7 +223,7 @@ export default function ReceiptPreviewModal({
                 付款人
               </span>
               <span className="text-gray-900 font-medium text-sm">
-                {receipt.payerName || '未知用户'}
+                {displayPayerName || '未知用户'}
               </span>
             </div>
 
@@ -263,7 +277,7 @@ export default function ReceiptPreviewModal({
                 商品说明
               </span>
               <span className="text-gray-900 text-sm text-right max-w-[55%] line-clamp-2">
-                {receipt.note || '医疗服务费'}
+                {showNote ? receipt.note : '医疗服务费'}
               </span>
             </div>
           </div>

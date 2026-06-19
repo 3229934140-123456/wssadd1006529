@@ -30,6 +30,7 @@ import {
 
 interface PatientReconcileCardProps {
   patient: Patient;
+  isExamMode?: boolean;
 }
 
 const paymentMethodColors: Record<string, string> = {
@@ -111,7 +112,10 @@ function MiniReceiptCard({
   );
 }
 
-export default function PatientReconcileCard({ patient }: PatientReconcileCardProps) {
+export default function PatientReconcileCard({
+  patient,
+  isExamMode = false,
+}: PatientReconcileCardProps) {
   const matchedReceiptIds = usePracticeStore(
     (state) => state.matchedReceipts[patient.id] || []
   );
@@ -172,16 +176,17 @@ export default function PatientReconcileCard({ patient }: PatientReconcileCardPr
   );
 
   return (
-    <DropZone onDrop={handleDrop} className="border border-gray-200">
-      <div className="bg-white rounded-xl overflow-hidden">
-        <div
-          className={cn(
-            'px-4 py-3 border-b',
-            patient.gender === '男'
-              ? 'bg-gradient-to-r from-blue-50 to-white border-blue-100'
-              : 'bg-gradient-to-r from-pink-50 to-white border-pink-100'
-          )}
-        >
+    <div id={`patient-card-${patient.id}`} className="transition-all duration-300">
+      <DropZone onDrop={handleDrop} className="border border-gray-200">
+        <div className="bg-white rounded-xl overflow-hidden">
+          <div
+            className={cn(
+              'px-4 py-3 border-b',
+              patient.gender === '男'
+                ? 'bg-gradient-to-r from-blue-50 to-white border-blue-100'
+                : 'bg-gradient-to-r from-pink-50 to-white border-pink-100'
+            )}
+          >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div
@@ -265,15 +270,17 @@ export default function PatientReconcileCard({ patient }: PatientReconcileCardPr
               </div>
             </div>
 
-            <div className="flex items-start gap-2">
-              <FileText className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-              <div>
-                <div className="text-xs text-gray-500 mb-0.5">关联凭证</div>
-                <span className="text-sm text-gray-900 font-medium">
-                  {patient.expectedReceiptIds.length} 张
-                </span>
+            {!isExamMode && (
+              <div className="flex items-start gap-2">
+                <FileText className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-xs text-gray-500 mb-0.5">关联凭证</div>
+                  <span className="text-sm text-gray-900 font-medium">
+                    {patient.expectedReceiptIds.length} 张
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="pt-3 border-t border-gray-100">
@@ -328,5 +335,6 @@ export default function PatientReconcileCard({ patient }: PatientReconcileCardPr
         </div>
       </div>
     </DropZone>
+    </div>
   );
 }
